@@ -385,3 +385,89 @@ def pkdump(data, file):
         os.makedirs(dirname)
     with open(file, 'wb') as fp:
         pkl.dump(data, fp)
+
+
+# ── colour helpers ────────────────────────────────────────────────────────────
+_G  = '\033[92m'   # green  — correct answer
+_R  = '\033[91m'   # red    — wrong prediction
+_B  = '\033[94m'   # blue   — question type header
+_Y  = '\033[93m'   # yellow — video id
+_RS = '\033[0m'    # reset
+
+QTYPE_NAMES = {
+    0: ('Descriptive',          'descriptive',    'answer'),
+    1: ('Explanatory',          'explanatory',    'answer'),
+    2: ('Predictive-Answer',    'predictive',     'answer'),
+    3: ('Predictive-Reason',    'predictive',     'reason'),
+    4: ('Counterfactual-Answer','counterfactual', 'answer'),
+    5: ('Counterfactual-Reason','counterfactual', 'reason'),
+}
+
+
+def visualize_sample(vid, data_path, predictions=None):
+    """Print all 6 QA types for one video, with correct/predicted highlighted."""
+    text_file   = osp.join(data_path, vid, 'text.json')
+    answer_file = osp.join(data_path, vid, 'answer.json')
+    if not osp.exists(text_file) or not osp.exists(answer_file):
+        print(f'  [skip] missing QA files for {vid}')
+        return
+
+    with open(text_file)   as f: text   = json.load(f)
+    with open(answer_file) as f: answer = json.load(f)
+
+    print(f'\n{"═"*70}')
+    print(f'{_Y}Video: {vid}{_RS}')
+    print(f'{"═"*70}')
+
+    for qtype_id, (label, section, key) in QTYPE_NAMES.items():
+        if section not in text or key not in text[section]:
+            continue
+        qns       = text[section]['question']
+        candidates= text[section][key]
+        ans_id    = answer[section][key]
+        pred_id   = None
+        if predictions:
+            pred_id = predictions.get(f'{vid}_{qtype_id}', {}).get('prediction')
+
+        print(f'\n  {_B}[{qtype_id}] {label}{_RS}')
+        print(f'  Q: {qns}')
+        for i, cand in enumerate(candidates):
+            if i == ans_id and pred_id is not None:
+                if pred_id == ans_id:
+                    marker = f'{_G}✓ pred+ans{_RS}'
+                else:
+                    marker = f'{_G}✓ ans{_RS}'
+            elif i == ans_id:
+                marker = f'{_G}✓{_RS}'
+            elif pred_id is not None and i == pred_id:
+                marker = f'{_R}✗ pred{_RS}'
+            else:
+                marker = '  '
+            print(f'     [{i}] {marker} {cand}')
+
+
+if __name__ == '__main__':
+    import argparse, random
+
+    ap = argparse.ArgumentParser(description='Visualise Causal-VidQA samples.')
+    ap.add_argument('--data_path',   default='./data/QA',          help='path to QA directory')
+    ap.add_argument('--split_path',  default='./data/split/test.pkl', help='split pkl file')
+    ap.add_argument('--result_file', default=None,                  help='prediction JSON (optional)')
+    ap.add_argument('--n',           type=int, default=5,           help='number of samples to show')
+    ap.add_argument('--seed',        type=int, default=42)
+    args = ap.parse_args()
+
+    with open(args.split_path, 'rb') as f:
+        vids = pkl.load(f)
+
+    predictions = None
+    if args.result_file and osp.exists(args.result_file):
+        with open(args.result_file) as f:
+            predictions = json.load(f)
+        print(f'Loaded predictions from {args.result_file}')
+
+    random.seed(args.seed)
+    samples = random.sample(vids, min(args.n, len(vids)))
+
+    for vid in samples:
+        visualize_sample(vid, args.data_path, predictions)

@@ -2,3 +2,9 @@ __pycache__
 __ignore__
 data
 .DS_Store
+*.mp4
+*.avi
+*.mkv
+experiment/
+result/
+viz_samples/
